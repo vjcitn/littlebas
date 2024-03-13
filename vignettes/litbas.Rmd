@@ -1,0 +1,116 @@
+---
+title: "basilisk and owlready2 -- some demonstrations"
+author: "Vincent J. Carey, stvjc at channing.harvard.edu"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{littlebas}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::pdf_document:
+    toc: yes
+    number_sections: yes
+  BiocStyle::html_document:
+    highlight: pygments
+    number_sections: yes
+    theme: united
+    toc: yes
+---
+
+# Introduction 
+
+We will look at the classes returned by
+an owlready2 load event.  The littlebas
+package includes `get_classes`.  What
+can we do with a python iterator in R
+to learn about an ontology?
+
+# The basic source code
+
+We are getting owlready2 from pip with a specific
+version.  We also dictate that we will use python 3.9
+
+```
+# necessary for python module control
+bsklenv <- basilisk::BasiliskEnvironment(envname="bsklenv",
+    pkgname="littlebas", packages="python=3.9", pip="owlready2==0.45")
+
+#' demo
+#' @param owlfile path to owl file
+#' @export
+get_classes = function(owlfile) {
+ proc = basilisk::basiliskStart(bsklenv)
+ basilisk::basiliskRun(proc, function(owlfile) {
+ o2 = reticulate::import("owlready2") # 'cached' by reticulate?
+ o2$get_ontology(owlfile)$load()$classes()
+ }, owlfile)
+}
+```
+
+# Run it
+
+We include a copy of cl.owl, compressed, in the
+littlebas package.  With ontoProc such a file would be in
+BiocFileCache.
+
+```{r doit}
+library(littlebas)
+cloppath = R.utils::decompressFile(
+   system.file("owl", "cl.owl.gz", package="littlebas"), 
+   temporary=TRUE, ext="gz", FUN=gzfile, remove=FALSE,
+   overwrite=TRUE)
+clc = get_classes(cloppath)
+clc
+```
+
+Now we have an instance of a python generator.  Use `py_help`
+from reticulate to learn about it.
+
+```
+Help on generator object:
+
+classes = class generator(object)
+ |  Methods defined here:
+ |  
+ |  __del__(...)
+ |  
+ |  __getattribute__(self, name, /)
+ |      Return getattr(self, name).
+ |  
+ |  __iter__(self, /)
+ |      Implement iter(self).
+ |  
+ |  __next__(self, /)
+ |      Implement next(self).
+...
+```
+
+We can just try to use the "next" method.
+```{r tryit}
+clc$`__next__`()
+clc$`__next__`()
+c3 = clc$`__next__`()
+class(c3)
+names(c3)
+```
+
+So there is a lot of information in each output of
+the generator.  Let's work with 1000 steps.
+We'll start over.
+
+```{r doagain}
+clc$close()
+clc = get_classes(cloppath)
+stuff = lapply(1:1000, function(x) clc$`__next__`())
+stuff[[3]]
+stuff[[1000]]
+stuff[[1000]]$label
+stuff[[1000]]$label[0]
+stuff[[1000]]$name
+```
+
+Seems super fast to iterate through the ontology generator.
+We can collect labels and terms using code like that above.
+
+How do we know how far to go?  Try a while loop with
+a try call to check for end of generation.
